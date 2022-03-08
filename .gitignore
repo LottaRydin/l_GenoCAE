@@ -1,0 +1,8 @@
+# Output and error files
+*.output
+*.error
+*.out
+
+# Saved models
+saved_models/
+ae_out_l/

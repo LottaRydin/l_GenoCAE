@@ -1,0 +1,35 @@
+{"layers2":
+    [
+      {"name": "conv_en_1",   "class": "Conv1D", "module":"tf.keras.layers", "args": {"filters":8, "kernel_size":5, "padding":"same", "activation":"elu", "strides":1}},
+      {"name": "batchNorm_1", "class": "BatchNormalization", "module":"tf.keras.layers", "args": {}},
+      {"name": "resBlock_1",  "class": "ResidualBlock2", "module":"utils.layers", "args": {"filters":8, "kernel_size":5}},
+      {"name": "maxPool_1",   "class": "MaxPool1D", "module":"tf.keras.layers", "args": {"pool_size":5, "strides":2, "padding":"same"}},
+      {"name": "conv_en_2",   "class": "Conv1D", "module":"tf.keras.layers", "args": {"filters":8, "kernel_size":5, "padding":"same", "activation":"elu"}},
+      {"name": "batchNorm_2", "class": "BatchNormalization", "module":"tf.keras.layers", "args": {}},
+      {"name": "flat_1",      "class": "Flatten", "module":"tf.keras.layers", "args": {}},
+      {"name": "drop_1",      "class": "Dropout", "module":"tf.keras.layers", "args": {"rate":0.01}},
+      {"name": "dense_1",     "class": "Dense", "module":"tf.keras.layers", "args": {"units":75}},
+      {"name": "drop_2",      "class": "Dropout", "module":"tf.keras.layers", "args": {"rate":0.01}},
+      {"name": "dense_2",     "class": "Dense", "module":"tf.keras.layers", "args": {"units":75, "activation":"elu"}},
+      {"name": "dense_3",     "class": "Dense", "module":"tf.keras.layers", "encoding" : true, "args": {"units":2, "name":"encoded"}},
+      {"name": "dense_4",     "class": "Dense", "module":"tf.keras.layers", "args": {"units":75, "activation":"elu"}},
+      {"name": "drop_2",      "class": "Dropout", "module":"tf.keras.layers", "args": {"rate":0.01}},
+      {"name": "dense_5",     "class": "Dense", "module":"tf.keras.layers", "args": {"units":75, "activation":"elu"}},
+      {"name": "drop_3",      "class": "Dropout", "module":"tf.keras.layers", "args": {"rate":0.01}},
+      {"name": "dense_6",     "class": "Dense", "module":"tf.keras.layers", "args": {"units":"ns[1]*8"}},
+      {"name": "reshape_1",   "class": "Reshape", "module":"tf.keras.layers", "args": {"target_shape":"(ns[1],8)", "name":"i_msvar"}},
+      {"name": "conv_de_1",   "class": "Conv1D", "module":"tf.keras.layers", "args": {"filters":8, "kernel_size":5, "padding":"same", "activation":"elu"}},
+      {"name": "batchNorm_2", "class": "BatchNormalization", "module":"tf.keras.layers", "args": {}},
+      {"name": "reshape_2",   "class": "Reshape", "module":"tf.keras.layers", "args": {"target_shape":"(ns[1],1,8)"}},
+      {"name": "upSamp_1",    "class": "UpSampling2D", "module":"tf.keras.layers", "args": {"size":"(2,1)"}},
+      {"name": "reshape_2",   "class": "Reshape", "module":"tf.keras.layers", "args": {"target_shape":"(ns[1]*2,8)"}},
+      {"name": "concat_1",    "class": "concatenate", "module": "tf.keras.layers", "args": {}},
+      {"name": "resBlock_2",  "class": "ResidualBlock2", "module":"utils.layers", "args": {"filters":8, "kernel_size":5}}, 
+      {"name": "conv_de_2",   "class": "Conv1D", "module":"tf.keras.layers", "args": {"filters":8, "kernel_size":5, "padding":"same", "activation":"elu", "name":"nms"}},
+      {"name": "batchNorm_3", "class": "BatchNormalization", "module":"tf.keras.layers", "args": {}},
+      {"name": "conv_de_3",   "class": "Conv1D", "module":"tf.keras.layers", "args": {"filters":1, "kernel_size":1, "padding":"same"}},
+      {"name": "flat_2",      "class": "Flatten", "module":"tf.keras.layers", "args": {"name":"logits"}}
+    ]
+    
+    }
+    
