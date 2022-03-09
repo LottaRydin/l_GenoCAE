@@ -48,6 +48,7 @@ import copy
 import h5py
 import matplotlib.animation as animation
 from pathlib import Path
+import random
 
 GCAE_DIR = Path(__file__).resolve().parent
 class Autoencoder(Model):
@@ -902,7 +903,7 @@ if __name__ == "__main__":
 			resume_from = False
 
 		dg.define_validation_set(validation_split = validation_split)
-		input_valid, targets_valid, _  = dg.get_valid_set(0.0)
+		input_valid, targets_valid, _  = dg.get_valid_set(0.1)
 
 		# if we do not have missing mask input, remeove that dimension/channel from the input that data generator returns
 		if not missing_mask_input:
@@ -1009,6 +1010,8 @@ if __name__ == "__main__":
 		losses_t = []
 		# valid losses per epoch
 		losses_v = []
+		# valid losses in each iteration
+		losses_v_i = []
 
 
 		min_valid_loss = np.inf
@@ -1086,13 +1089,28 @@ if __name__ == "__main__":
 					# output_valid_batch_2, encoded_data_valid_batch = autoencoder(input_train_batch_2, is_training = False)
 
 					# Network used iteratively:
-					for i in range(1, iterations+1):
+					# Valid losses per iteration:
+					#losses_v_i = [] # [[] fo x in range(iterations)]
+					losses_v_i_batch = [[] for x in range(iterations)]
+					iterations_v = [x+1 for x in range(iterations)]
+
+					for i in range(iterations):
+
 						output_valid_batch_1, encoded_data_valid_batch = autoencoder(input_train_batch_1, is_training = False)
 						output_valid_batch_2, encoded_data_valid_batch = autoencoder(input_train_batch_2, is_training = False)
 
 						# Input for next iteartion
 						input_train_batch_1 = make_input_hap(output_valid_batch_2, input_valid_batch)
 						input_train_batch_2 = make_input_hap(output_valid_batch_1, input_valid_batch)
+
+						#if e % save_interval == 0:
+						if True:
+							#iterations_v.append(i+1)
+
+							valid_loss_batch_i = loss_func(y_pred_1 = output_valid_batch_1, y_pred_2 = output_valid_batch_2, y_true = targets_valid_batch)
+							valid_loss_batch_i += sum(autoencoder.losses)
+							#losses_v_i[i].append(valid_loss_batch_i)
+							losses_v_i_batch[i].append(valid_loss_batch_i)
 
 
 					#output_valid_batch = handle_haploid_output(output_valid_batch_1, output_valid_batch_2)
@@ -1101,11 +1119,13 @@ if __name__ == "__main__":
 					valid_loss_batch += sum(autoencoder.losses)
 					losses_v_batches.append(valid_loss_batch)
 
+				losses_v_i_this_epoch = [np.average(x) for x in losses_v_i_batch]
 				valid_loss_this_epoch = np.average(losses_v_batches)
 				with valid_writer.as_default():
 					tf.summary.scalar('loss', valid_loss_this_epoch, step=step_counter)
 
 				losses_v.append(valid_loss_this_epoch)
+				losses_v_i.append(losses_v_i_this_epoch)
 				valid_time = (datetime.now() - startTime).total_seconds()
 
 				if valid_loss_this_epoch <= min_valid_loss:
@@ -1155,6 +1175,44 @@ if __name__ == "__main__":
 		plt.legend()
 		plt.savefig("{}/losses_from_train.pdf".format(train_directory))
 		plt.close()
+
+		# Make plots for iteration
+		# Plotting loss in each iteration and epoch
+		outfilename = "{0}/losses_from_train_v_i.csv".format(train_directory)
+		fig, ax = plt.subplots()
+
+		print('losses_v_i:')
+		print(losses_v_i)
+		print('iterations_v:')
+		print(iterations_v)
+
+		ep_count = 0
+		for loss_ep in losses_v_i:
+			ep_count += 1
+			if (ep_count % save_interval == 0) or loss_ep == 1:
+				#plt.plot(epochs_v_i_combined, losses_v_i_combined) #label=f"valid_i_{ep_count}"
+				plt.plot(iterations_v, loss_ep)
+
+		plt.xlabel("Iteration")
+		plt.ylabel("Loss function value")
+		#plt.legend()
+		plt.savefig("{}/losses_from_train_v_i.pdf".format(train_directory))
+		plt.close()
+
+		# Plotting loss change for each epoch
+		outfilename = "{0}/loss_change_from_iteration_v.csv".format(train_directory)
+		diff_v = [loss[0]-loss[-1] for loss in losses_v_i]
+		epochs_v = [e for e in range(1, len(losses_v_i)+1)]
+
+		plt.plot(epochs_v, diff_v)
+
+		plt.xlabel("Epoch")
+		plt.ylabel("Loss difference")
+		#plt.legend()
+		plt.savefig("{}/loss_change_from_iteration_v.pdf".format(train_directory))
+		plt.close()
+
+
 
 		print("Done training. Wrote to {0}".format(train_directory))
 
