@@ -1325,9 +1325,6 @@ if __name__ == "__main__":
 					loss_train_batch_i = None
 
 					for i in range(iterations):
-						print(f'iteration {i}')
-						print(f'loss in earlier itaration:')
-						print(loss_train_batch_i)
 
 						decoded_train_batch_1, encoded_train_batch = autoencoder(input_train_batch_1, is_training = False)
 						decoded_train_batch_2, encoded_train_batch = autoencoder(input_train_batch_2, is_training = False)
@@ -1340,9 +1337,6 @@ if __name__ == "__main__":
 						loss_train_batch_i = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
 						loss_train_batch_i += sum(autoencoder.losses)
 						losses_train_i_batch[i].append(loss_train_batch_i)
-
-						print('Loss in this iteration:')
-						print(loss_train_batch_i)
 					#"""
 
 					loss_train_batch = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
@@ -1505,7 +1499,7 @@ if __name__ == "__main__":
 			plt.xlabel("Iteration")
 			plt.ylabel("Loss function value")
 			#plt.legend()
-			plt.savefig("{}losses_from_train_i_project.pdf".format(train_directory))
+			plt.savefig(results_directory + "/"+"losses_from_train_i_project.pdf")
 			plt.close()
 
 			# Plotting loss change for each epoch
@@ -1518,7 +1512,7 @@ if __name__ == "__main__":
 			plt.xlabel("Epochs (saved)")
 			plt.ylabel("Loss difference")
 			#plt.legend()
-			plt.savefig("{}/loss_change_from_iteration_project.pdf".format(train_directory))
+			plt.savefig(results_directory + "/"+"/loss_change_from_iteration_project.pdf")
 			plt.close()
 
 		############################### gconc ###############################
