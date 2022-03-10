@@ -903,7 +903,7 @@ if __name__ == "__main__":
 			resume_from = False
 
 		dg.define_validation_set(validation_split = validation_split)
-		input_valid, targets_valid, _  = dg.get_valid_set(0.1)
+		input_valid, targets_valid, _  = dg.get_valid_set(0.2)
 
 		# if we do not have missing mask input, remeove that dimension/channel from the input that data generator returns
 		if not missing_mask_input:
@@ -1251,6 +1251,10 @@ if __name__ == "__main__":
 		# genotype concordance of the train set per epoch
 		genotype_concs_train = []
 
+		# train losses in each iteration
+		losses_train_i = []
+		iterative = False
+
 		autoencoder = Autoencoder(model_architecture, n_markers, noise_std, regularizer)
 		optimizer = tf.optimizers.Adam(learning_rate = learning_rate)
 
@@ -1304,30 +1308,49 @@ if __name__ == "__main__":
 
 					input_train_batch_1, input_train_batch_2 = make_haploids(input_train_batch)
 
-					# iterations should probably be implemented here
+					# Network not used iteratively:
+					"""
 					decoded_train_batch_1, encoded_train_batch = autoencoder(input_train_batch_1, is_training = False)
 					decoded_train_batch_2, encoded_train_batch = autoencoder(input_train_batch_2, is_training = False)
 					loss_train_batch = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
+					iterative = False
+					"""
 
-					for i in range(1,iterations+1):
+					# Network used iteratively:
+					#"""
+					#Valid losses per iteration:
+					losses_train_i_batch = [[] for x in range(iterations)]
+					iterations_train = [x+1 for x in range(iterations)]
+					iterative = True
+					loss_train_batch_i = None
+
+					for i in range(iterations):
+						print(f'iteration {i}')
+						print(f'loss in earlier itaration:')
+						print(loss_train_batch_i)
 
 						decoded_train_batch_1, encoded_train_batch = autoencoder(input_train_batch_1, is_training = False)
 						decoded_train_batch_2, encoded_train_batch = autoencoder(input_train_batch_2, is_training = False)
-						#output = handle_haploid_output(output_1, output_2)
-						loss_train_batch = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
-						#loss_value += sum(model.losses)
 
 						# Make input haploids for next iteration
-						input_train_batch_2 = make_input_hap(decoded_train_batch_1, input)
-						input_train_batch_1 = make_input_hap(decoded_train_batch_2, input)
+						input_train_batch_2 = make_input_hap(decoded_train_batch_1, input_train_batch)
+						input_train_batch_1 = make_input_hap(decoded_train_batch_2, input_train_batch)
 
+						# Save losses:
+						loss_train_batch_i = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
+						loss_train_batch_i += sum(autoencoder.losses)
+						losses_train_i_batch[i].append(loss_train_batch_i)
 
-					# decoded_train_batch should probably not be used at all
-					#decoded_train_batch = get_diploid(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2)
+						print('Loss in this iteration:')
+						print(loss_train_batch_i)
+					#"""
+
+					loss_train_batch = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
+					loss_train_batch += sum(autoencoder.losses)
 
 					# decoded_train_batch, encoded_train_batch = autoencoder(input_train_batch, is_training = False)
 					# loss_train_batch = loss_func(y_pred = decoded_train_batch, y_true = targets_train_batch)
-					loss_train_batch += sum(autoencoder.losses)
+					#loss_train_batch += sum(autoencoder.losses)
 
 					ind_pop_list_train = np.concatenate((ind_pop_list_train, ind_pop_list_train_batch), axis=0)
 					encoded_train = np.concatenate((encoded_train, encoded_train_batch), axis=0)
@@ -1348,7 +1371,11 @@ if __name__ == "__main__":
 
 				ind_pop_list_train = np.array(ind_pop_list_train)
 				encoded_train = np.array(encoded_train)
+
 				loss_value = np.average(loss_value_per_train_batch)
+				if iterative:
+					losses_i_this_epoch = [np.average(x) for x in losses_train_i_batch]
+
 
 				if epoch == epochs[0]:
 					assert len(ind_pop_list_train) == dg.n_train_samples, "{0} vs {1}".format(len(ind_pop_list_train), dg.n_train_samples)
@@ -1408,6 +1435,8 @@ if __name__ == "__main__":
 			genotype_concordance_value = genotype_concordance_metric.result()
 
 			losses_train.append(loss_value)
+			if iterative:
+				losses_train_i.append(losses_i_this_epoch)
 			genotype_concs_train.append(genotype_concordance_value)
 			#"""
 			if superpopulations_file:
@@ -1456,6 +1485,41 @@ if __name__ == "__main__":
 		plt.savefig(results_directory + "/" + "losses_from_project.pdf")
 		plt.close()
 
+		############################### Losses in iterations ###############################
+		if iterative:
+			print('losses_v_i:')
+			print(losses_train_i)
+			print('iterations_train:')
+			print(iterations_train)
+
+			outfilename = "{0}/losses_from_train_i_project.csv".format(train_directory)
+			fig, ax = plt.subplots()
+
+			ep_count = 0
+			for loss_ep in losses_train_i:
+				ep_count += 1
+				#if (ep_count % save_interval == 0) or loss_ep == 1:
+				#plt.plot(epochs_v_i_combined, losses_v_i_combined) #label=f"valid_i_{ep_count}"
+				plt.plot(iterations_train, loss_ep)
+			
+			plt.xlabel("Iteration")
+			plt.ylabel("Loss function value")
+			#plt.legend()
+			plt.savefig("{}losses_from_train_i_project.pdf".format(train_directory))
+			plt.close()
+
+			# Plotting loss change for each epoch
+			outfilename = "{0}/loss_change_from_iteration_project.csv".format(train_directory)
+			diff_v = [loss[0]-loss[-1] for loss in losses_train_i]
+			epochs_v = [e for e in range(1, len(losses_train_i)+1)]
+
+			plt.plot(epochs_v, diff_v)
+
+			plt.xlabel("Epochs (saved)")
+			plt.ylabel("Loss difference")
+			#plt.legend()
+			plt.savefig("{}/loss_change_from_iteration_project.pdf".format(train_directory))
+			plt.close()
 
 		############################### gconc ###############################
 		try:
