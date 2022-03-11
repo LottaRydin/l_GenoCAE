@@ -224,7 +224,16 @@ class data_generator_ae:
 
 		targets = self.genotypes_train_orig[self.sample_idx_valid]
 
-		return input_data_valid, targets, self.ind_pop_list_train_orig[self.sample_idx_valid]
+		print('In  get_valid_set():')
+		print('input_data_valid')
+		print(input_data_valid)
+		print(input_data_valid.shape)
+
+		print('targets')
+		print(targets)
+		print(targets.shape)
+
+		return input_data_valid, targets, self.ind_pop_list_train_orig[self.sample_idx_valid], mask_valid
 
 
 	def reset_batch_index(self):

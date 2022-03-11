@@ -453,9 +453,6 @@ def make_input_hap(hap_output, dip_input):
 	"""
 	creates one complementary haploid based on output haploid an input diploid.
 	"""
-	# tf.print('dip_input:')
-	# tf.print(dip_input)
-
 	hap_output = hap_output[:, 0:n_markers] # from loss_function
 
 	if not fill_missing: # from loss_function
@@ -479,18 +476,9 @@ def make_input_hap(hap_output, dip_input):
 	comp_hap = tf.math.subtract(diploid, rounded_hap) 
 
 	# Make missing data missing again
-
 	indices = tf.where(tf.equal(True, 0 == comp_hap[:,:,1]))
 	zero_index = tf.zeros((int(tf.shape(indices)[0]), 1), dtype=tf.int64)
-	# try:
-	# 	zero_index = tf.constant(0, shape=(int(tf.shape(indices)[0]), 1), dtype=tf.int64)
-	# 	tf.print('working')
-	# except ValueError: 
-	# 	tf.print('[int(tf.shape(indices)[0]), 1] NOT WORKINGGG:')
-	# 	# tf.print((int(tf.shape(indices)[0]), 1))
-	# 	# tf.print(type(int(tf.shape(indices)[0])))
-	# 	# tf.print(indices.shape)
-	# 	#exit()
+
 	indices = tf.concat([indices, zero_index], -1)
 	missing_val = tf.subtract(zero_index, 1)
 	missing_val = tf.cast(missing_val, dtype=tf.float32)
@@ -500,57 +488,26 @@ def make_input_hap(hap_output, dip_input):
 		comp_hap = tf.tensor_scatter_nd_update(comp_hap, indices, missing_val)
 
 	# Handle when haploid have 1 and diploid 0. Haploid will be changed to 0 in these loci
-	# tf.print('comp_hap:')
-	# tf.print(comp_hap)
-	# tf.print(comp_hap.shape)
-
 	indices_1_0 = tf.where((tf.equal(True, 0 == dip_input[:,:,0])))
 	zero_index_1_0 = tf.zeros((int(tf.shape(indices_1_0)[0]), 1), dtype=tf.int64)
 	indices_1_0 = tf.concat([indices_1_0, zero_index_1_0], -1)
-	# tf.print('indices_1_0')
-	# tf.print(indices_1_0)
-	# tf.print(indices_1_0.shape)
+
 
 	zero_val_1_0 = tf.zeros((int(tf.shape(indices_1_0)[0])), dtype=tf.float32)
-	# tf.print('zero_val_1_0')
-	# tf.print(zero_val_1_0)
-	# tf.print(zero_val_1_0.shape)
 
 	comp_hap = tf.tensor_scatter_nd_update(comp_hap, indices_1_0, zero_val_1_0)
-	# tf.print('comp_hap1:')
-	# tf.print(comp_hap1)
-	# tf.print(comp_hap1.shape)
-
-
 
 	# Handle when haploid have 0 and diploid 1
-	# tf.print('comp_hap:')
-	# tf.print(comp_hap)
-	# tf.print(comp_hap.shape)
-
 	indices_0_1 = tf.where((tf.equal(True, 1 == dip_input[:,:,0])))
 	zero_index_0_1 = tf.zeros((int(tf.shape(indices_0_1)[0]), 1), dtype=tf.int64)
 	indices_0_1 = tf.concat([indices_0_1, zero_index_0_1], -1)
-	# tf.print('indices_0_1')
-	# tf.print(indices_0_1)
-	# tf.print(indices_0_1.shape)
 
 	ones_val_0_1 = tf.zeros((int(tf.shape(indices_0_1)[0])), dtype=tf.float32)
 	ones_val_0_1 = tf.add(ones_val_0_1, 1)
-	# tf.print('ones_val_0_1')
-	# tf.print(ones_val_0_1)
-	# tf.print(ones_val_0_1.shape)
 
 	comp_hap = tf.tensor_scatter_nd_update(comp_hap, indices_0_1, ones_val_0_1)
-	# tf.print('comp_hap1:')
-	# tf.print(comp_hap)
-	# tf.print(comp_hap.shape)
-
 
 	return comp_hap
-
-	
-
 
 def save_ae_weights(epoch, train_directory, autoencoder, prefix=""):
 	weights_file_prefix = "{}/weights/{}{}".format(train_directory, prefix, epoch)
@@ -562,17 +519,10 @@ def save_ae_weights(epoch, train_directory, autoencoder, prefix=""):
 def make_haploid(input):
 	try:
 		indices = tf.where(tf.equal(True, 0.5 == input))
-		# print(tf.shape(indices))
-		# print(int(tf.shape(indices)[0]))
-		# print(indices)
+
 		random_allele = np.random.randint(2, size=int(tf.shape(indices)[0]))
-		# print(random_allele)
 		haploid = tf.tensor_scatter_nd_update(input, indices, random_allele)
-		# print(':')
-		# print(haploid)
 	except NotImplementedError:
-		# print('kaos!')
-		# print(input)
 		return input
 	return haploid
 
@@ -580,10 +530,6 @@ def make_haploids(input):
 	#print('-------------------- make haploids --------------------')
 	try:
 		indices = tf.where(tf.equal(True, 0.5 == input))
-		# print('index shape:')
-		# print(tf.shape(indices))
-		# print(int(tf.shape(indices)[0]))
-		# print(indices)
 
 		# With numpy. Should not be used.
 		# random_allele_1 = np.random.randint(2, size=int(tf.shape(indices)[0]))
@@ -620,6 +566,38 @@ def handle_haploid_output(hap_1, hap_2):
 
 	return diploid
 
+def calculate_concordance_from_mask(output_1, output_2, target, mask):
+	concordance_metric = GenotypeConcordance()
+	concordance_metric.reset_states()
+
+
+	# print('target:')
+	# print(target)
+	# print(target.shape)
+
+	# Assumes : train_opts["loss"]["class"] in ["CategoricalCrossentropy", "KLDivergence"] and data_opts["norm_mode"] == "genotypewise01":
+	genotypes_output = tf.cast(tf.argmax(alfreqvector(output_1[:, 0:n_markers], output_2[:, 0:n_markers]), axis = -1), tf.float16) * 0.5
+	# print('genotypes_output:')
+	# print(genotypes_output)
+	true_genotype = tf.convert_to_tensor(target)
+	# print('mask in function:')
+	# print(mask)
+	# print(mask.shape)
+
+	#indices = tf.where(tf.equal(True, 0 == mask))
+	mask_indices = tf.equal(True, 0 == mask)
+	# print('indices:')
+	# print(mask_indices)
+	# print(mask_indices.shape)
+
+	# print('genotypes_output[mask_indices]')
+	# print(genotypes_output[mask_indices])
+	# print('true_genotype[mask_indices]')
+	# print(true_genotype[mask_indices])
+	concordance_metric.update_state(y_pred = genotypes_output[mask_indices], y_true = true_genotype[mask_indices])
+
+	concordance_value = concordance_metric.result()
+	return concordance_value
 
 if __name__ == "__main__":
 	print("tensorflow version {0}".format(tf.__version__))
@@ -903,7 +881,7 @@ if __name__ == "__main__":
 			resume_from = False
 
 		dg.define_validation_set(validation_split = validation_split)
-		input_valid, targets_valid, _  = dg.get_valid_set(0.2)
+		input_valid, targets_valid, _, mask_valid  = dg.get_valid_set(0.2)
 
 		# if we do not have missing mask input, remeove that dimension/channel from the input that data generator returns
 		if not missing_mask_input:
@@ -1012,6 +990,8 @@ if __name__ == "__main__":
 		losses_v = []
 		# valid losses in each iteration
 		losses_v_i = []
+		# Concordance in validation sparsifying mask per epoch
+		conc_v = []
 
 
 		min_valid_loss = np.inf
@@ -1025,6 +1005,7 @@ if __name__ == "__main__":
 			effective_epoch = e + resume_from
 			losses_t_batches = []
 			losses_v_batches = []
+			conc_v_batches = []
 
 			for ii in range(n_train_batches):
 				#print(f'train batch: {ii}')
@@ -1079,9 +1060,11 @@ if __name__ == "__main__":
 					if jj == n_valid_batches - 1:
 						input_valid_batch = input_valid[start:]
 						targets_valid_batch = targets_valid[start:]
+						mask_valid_batch = mask_valid[start:]
 					else:
 						input_valid_batch = input_valid[start:start+batch_size_valid]
 						targets_valid_batch = targets_valid[start:start+batch_size_valid]
+						mask_valid_batch = mask_valid[start:start+batch_size_valid]
 
 					#output_valid_batch, encoded_data_valid_batch = autoencoder(input_valid_batch, is_training = False)
 					input_train_batch_1, input_train_batch_2 = make_haploids(input_valid_batch)
@@ -1090,7 +1073,6 @@ if __name__ == "__main__":
 
 					# Network used iteratively:
 					# Valid losses per iteration:
-					#losses_v_i = [] # [[] fo x in range(iterations)]
 					losses_v_i_batch = [[] for x in range(iterations)]
 					iterations_v = [x+1 for x in range(iterations)]
 
@@ -1099,18 +1081,14 @@ if __name__ == "__main__":
 						output_valid_batch_1, encoded_data_valid_batch = autoencoder(input_train_batch_1, is_training = False)
 						output_valid_batch_2, encoded_data_valid_batch = autoencoder(input_train_batch_2, is_training = False)
 
-						# Input for next iteartion
+						# Input for next iteration
 						input_train_batch_1 = make_input_hap(output_valid_batch_2, input_valid_batch)
 						input_train_batch_2 = make_input_hap(output_valid_batch_1, input_valid_batch)
 
-						#if e % save_interval == 0:
-						if True:
-							#iterations_v.append(i+1)
-
-							valid_loss_batch_i = loss_func(y_pred_1 = output_valid_batch_1, y_pred_2 = output_valid_batch_2, y_true = targets_valid_batch)
-							valid_loss_batch_i += sum(autoencoder.losses)
-							#losses_v_i[i].append(valid_loss_batch_i)
-							losses_v_i_batch[i].append(valid_loss_batch_i)
+						# Loss calculated in each iteration
+						valid_loss_batch_i = loss_func(y_pred_1 = output_valid_batch_1, y_pred_2 = output_valid_batch_2, y_true = targets_valid_batch)
+						valid_loss_batch_i += sum(autoencoder.losses)
+						losses_v_i_batch[i].append(valid_loss_batch_i)
 
 
 					#output_valid_batch = handle_haploid_output(output_valid_batch_1, output_valid_batch_2)
@@ -1119,13 +1097,19 @@ if __name__ == "__main__":
 					valid_loss_batch += sum(autoencoder.losses)
 					losses_v_batches.append(valid_loss_batch)
 
+					# Calculate concordance for each batch
+					conc_v_batch = calculate_concordance_from_mask(output_valid_batch_1, output_valid_batch_2, targets_valid_batch, mask_valid_batch)
+					conc_v_batches.append(conc_v_batch)
+
 				losses_v_i_this_epoch = [np.average(x) for x in losses_v_i_batch]
 				valid_loss_this_epoch = np.average(losses_v_batches)
+				conc_v_this_epoch = np.average(conc_v_batches)
 				with valid_writer.as_default():
 					tf.summary.scalar('loss', valid_loss_this_epoch, step=step_counter)
 
 				losses_v.append(valid_loss_this_epoch)
 				losses_v_i.append(losses_v_i_this_epoch)
+				conc_v.append(conc_v_this_epoch)
 				valid_time = (datetime.now() - startTime).total_seconds()
 
 				if valid_loss_this_epoch <= min_valid_loss:
@@ -1176,15 +1160,10 @@ if __name__ == "__main__":
 		plt.savefig("{}/losses_from_train.pdf".format(train_directory))
 		plt.close()
 
-		# Make plots for iteration
+		########################################### Make plots for iteration #########################################
 		# Plotting loss in each iteration and epoch
 		outfilename = "{0}/losses_from_train_v_i.csv".format(train_directory)
 		fig, ax = plt.subplots()
-
-		print('losses_v_i:')
-		print(losses_v_i)
-		print('iterations_v:')
-		print(iterations_v)
 
 		ep_count = 0
 		for loss_ep in losses_v_i:
@@ -1212,6 +1191,18 @@ if __name__ == "__main__":
 		plt.savefig("{}/loss_change_from_iteration_v.pdf".format(train_directory))
 		plt.close()
 
+		######################################### Plotting conocrdance for masked values in each epoch: #############################################
+		outfilename = "{0}/masked_validation_concordances.csv".format(train_directory)
+		epochs_combined, genotype_concs_combined = write_metric_per_epoch_to_csv(outfilename, conc_v, train_epochs)
+
+		plt.plot(epochs_combined, genotype_concs_combined, label="train", c="green")
+
+		plt.xlabel("Epoch")
+		plt.ylabel("Genotype concordance in masked values vallidation")
+
+		plt.savefig("{0}/masked_validation_concordances.pdf".format(train_directory))
+
+		plt.close()
 
 
 		print("Done training. Wrote to {0}".format(train_directory))
