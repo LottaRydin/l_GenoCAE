@@ -372,18 +372,19 @@ def run_optimization(model, optimizer, loss_function, input, targets, iterations
 	:param targets: target data
 	:return: value of the loss function
 	'''
-	input_1, input_2 = make_haploids(input)
-	for i in range(1,iterations+1):
+	input_1, input_2 = make_haploids(input[0])
+	for i in range(iterations):
 		with tf.GradientTape() as g:
 			output_1, encoded_data = model(input_1, is_training=True)
 			output_2, encoded_data = model(input_2, is_training=True)
 			#output = handle_haploid_output(output_1, output_2)
-			loss_value = loss_function(y_pred_1 = output_1, y_pred_2 = output_2, y_true = targets)
+			loss_value = loss_function(y_pred_1 = output_1, y_pred_2 = output_2, y_true = targets[i])
 			loss_value += sum(model.losses)
 
 			# Make input haploids for next iteration
-			input_2 = make_input_hap(output_1, input)
-			input_1 = make_input_hap(output_2, input)
+			if i < iterations-1:
+				input_2 = make_input_hap(output_1, input[i+1])
+				input_1 = make_input_hap(output_2, input[i+1])
 
 		gradients = g.gradient(loss_value, model.trainable_variables)
 
@@ -976,6 +977,7 @@ if __name__ == "__main__":
 		losses_v_i = []
 		# Concordance in validation sparsifying mask per epoch
 		conc_v = []
+		conc_v_i = []
 		baseline_conc = None
 
 
@@ -1002,18 +1004,26 @@ if __name__ == "__main__":
 				else:
 					sparsify_fraction = 0.0
 
-				# last batch is probably not full
-				if ii == n_train_batches - 1:
-					batch_input, batch_target, _ = dg.get_train_batch(sparsify_fraction, n_train_samples_last_batch) # iterations)
-				else:
-					batch_input, batch_target , _ = dg.get_train_batch(sparsify_fraction, batch_size) #iterations)
+				# Different sparsifications in different iterations:
+				batch_inputs = []
+				batch_targets = []
 
-				# TODO temporary solution: should fix data generator so it doesnt bother with the mask if not needed
-				if not missing_mask_input:
-					batch_input = batch_input[:,:,0,np.newaxis]
+				for i in range(iterations):
+					# last batch is probably not full
+					if ii == n_train_batches - 1:
+						batch_input, batch_target, _ = dg.get_train_batch(sparsify_fraction, n_train_samples_last_batch) #, iterations)
+					else:
+						batch_input, batch_target , _ = dg.get_train_batch(sparsify_fraction, batch_size) # iterations)
+
+					# TODO temporary solution: should fix data generator so it doesnt bother with the mask if not needed
+					if not missing_mask_input:
+						batch_input = batch_input[:,:,0,np.newaxis]
+
+					batch_inputs.append(batch_input)
+					batch_targets.append(batch_target)
 
 				# Iteration should be implemented somwhere here
-				train_batch_loss = run_optimization(autoencoder, optimizer, loss_func, batch_input, batch_target, iterations)
+				train_batch_loss = run_optimization(autoencoder, optimizer, loss_func, batch_inputs, batch_targets, iterations)
 				losses_t_batches.append(train_batch_loss)
 
 			train_loss_this_epoch = np.average(losses_t_batches)
@@ -1060,6 +1070,7 @@ if __name__ == "__main__":
 					# Network used iteratively:
 					# Valid losses per iteration:
 					losses_v_i_batch = [[] for x in range(iterations)]
+					conc_v_i_batch = [[] for x in range(iterations)]
 					iterations_v = [x+1 for x in range(iterations)]
 
 					for i in range(iterations):
@@ -1077,7 +1088,7 @@ if __name__ == "__main__":
 						losses_v_i_batch[i].append(valid_loss_batch_i)
 
 						# concordance calculated in every iteration
-						#losses_v_i_batch[i].append(calculate_concordance_from_mask(output_valid_batch_1, output_valid_batch_2, targets_valid_batch, mask_valid_batch))
+						conc_v_i_batch[i].append(calculate_concordance_from_mask(output_valid_batch_1, output_valid_batch_2, targets_valid_batch, mask_valid_batch))
 
 
 
@@ -1102,6 +1113,7 @@ if __name__ == "__main__":
 						baseline_conc_batches.append(baseline_conc_batch)
 
 				losses_v_i_this_epoch = [np.average(x) for x in losses_v_i_batch]
+				conc_v_i_this_epoch = [np.average(x) for x in conc_v_i_batch]
 				valid_loss_this_epoch = np.average(losses_v_batches)
 				conc_v_this_epoch = np.average(conc_v_batches)
 				if baseline_conc == None:
@@ -1114,6 +1126,7 @@ if __name__ == "__main__":
 				losses_v.append(valid_loss_this_epoch)
 				losses_v_i.append(losses_v_i_this_epoch)
 				conc_v.append(conc_v_this_epoch)
+				conc_v_i.append(conc_v_i_this_epoch)
 				valid_time = (datetime.now() - startTime).total_seconds()
 
 				if valid_loss_this_epoch <= min_valid_loss:
@@ -1165,7 +1178,7 @@ if __name__ == "__main__":
 		plt.close()
 
 		########################################### Make plots for iteration #########################################
-		# Plotting loss in each iteration and epoch
+		### Plotting loss in each iteration and epoch ###
 		outfilename = "{0}/losses_from_train_v_i.csv".format(train_directory)
 		fig, ax = plt.subplots()
 
@@ -1182,7 +1195,7 @@ if __name__ == "__main__":
 		plt.savefig("{}/losses_from_train_v_i.pdf".format(train_directory))
 		plt.close()
 
-		# Plotting loss change for each epoch
+		### Plotting loss change for each epoch ###
 		outfilename = "{0}/loss_change_from_iteration_v.csv".format(train_directory)
 		diff_v = [loss[0]-loss[-1] for loss in losses_v_i]
 		epochs_v = [e for e in range(1, len(losses_v_i)+1)]
@@ -1193,6 +1206,36 @@ if __name__ == "__main__":
 		plt.ylabel("Loss difference")
 		#plt.legend()
 		plt.savefig("{}/loss_change_from_iteration_v.pdf".format(train_directory))
+		plt.close()
+
+		### Plotting concordance in each iteration ###
+		outfilename = "{0}/conc_from_train_v_i.csv".format(train_directory)
+		fig, ax = plt.subplots()
+
+		ep_count = 0
+		for conc_ep in conc_v_i:
+			ep_count += 1
+			if (ep_count % save_interval == 0) or loss_ep == 1:
+				#plt.plot(epochs_v_i_combined, losses_v_i_combined) #label=f"valid_i_{ep_count}"
+				plt.plot(iterations_v, conc_ep)
+
+		plt.xlabel("Iteration")
+		plt.ylabel("Concordance in masked values")
+		#plt.legend()
+		plt.savefig("{}/conc_from_train_v_i.pdf".format(train_directory))
+		plt.close()
+
+		### Plotting concordance change for each epoch ###
+		outfilename = "{0}/conc_change_from_iteration_v.csv".format(train_directory)
+		diff_v_c = [conc[0]-conc[-1] for conc in conc_v_i]
+		epochs_v = [e for e in range(1, len(conc_v_i)+1)]
+
+		plt.plot(epochs_v, diff_v_c)
+
+		plt.xlabel("Epoch")
+		plt.ylabel("concordance difference")
+		#plt.legend()
+		plt.savefig("{}/conc_change_from_iteration_v.pdf".format(train_directory))
 		plt.close()
 
 		######################################### Plotting conocrdance for masked values in each epoch: #############################################
