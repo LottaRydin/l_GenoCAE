@@ -372,24 +372,8 @@ def run_optimization(model, optimizer, loss_function, input, targets, iterations
 	:param targets: target data
 	:return: value of the loss function
 	'''
-	#print('optimization')
-	#print('targets:')
-	#print(targets)
-	# print('input:')
-	# print(input)
 	input_1, input_2 = make_haploids(input)
-	# tf.print('input_1:')
-	# tf.print(input_1)
-	# tf.print('input_2:')
-	# tf.print(input_2)
-	# print('input_1')
-	# print(input_1)
 	for i in range(1,iterations+1):
-		# tf.print(f'iteration {i}')
-		# tf.print('input_1 iteration {i}:')
-		# tf.print(input_1)
-		# tf.print('input_2 iteration {i}:')
-		# tf.print(input_2)
 		with tf.GradientTape() as g:
 			output_1, encoded_data = model(input_1, is_training=True)
 			output_2, encoded_data = model(input_2, is_training=True)
@@ -943,7 +927,7 @@ if __name__ == "__main__":
 			print("Reading weights from {0}".format(weights_file_prefix))
 
 			# get a single sample to run through optimization to reload weights and optimizer variables
-			input_init, targets_init, _= dg.get_train_batch(0.0, 1)
+			input_init, targets_init, _= dg.get_train_batch(0.0, 1, iterations)
 			dg.reset_batch_index()
 			if not missing_mask_input:
 				input_init = input_init[:,:,0, np.newaxis]
@@ -992,6 +976,7 @@ if __name__ == "__main__":
 		losses_v_i = []
 		# Concordance in validation sparsifying mask per epoch
 		conc_v = []
+		baseline_conc = None
 
 
 		min_valid_loss = np.inf
@@ -1006,6 +991,7 @@ if __name__ == "__main__":
 			losses_t_batches = []
 			losses_v_batches = []
 			conc_v_batches = []
+			baseline_conc_batches = []
 
 			for ii in range(n_train_batches):
 				#print(f'train batch: {ii}')
@@ -1018,9 +1004,9 @@ if __name__ == "__main__":
 
 				# last batch is probably not full
 				if ii == n_train_batches - 1:
-					batch_input, batch_target, _ = dg.get_train_batch(sparsify_fraction, n_train_samples_last_batch)
+					batch_input, batch_target, _ = dg.get_train_batch(sparsify_fraction, n_train_samples_last_batch) # iterations)
 				else:
-					batch_input, batch_target , _ = dg.get_train_batch(sparsify_fraction, batch_size)
+					batch_input, batch_target , _ = dg.get_train_batch(sparsify_fraction, batch_size) #iterations)
 
 				# TODO temporary solution: should fix data generator so it doesnt bother with the mask if not needed
 				if not missing_mask_input:
@@ -1090,6 +1076,10 @@ if __name__ == "__main__":
 						valid_loss_batch_i += sum(autoencoder.losses)
 						losses_v_i_batch[i].append(valid_loss_batch_i)
 
+						# concordance calculated in every iteration
+						#losses_v_i_batch[i].append(calculate_concordance_from_mask(output_valid_batch_1, output_valid_batch_2, targets_valid_batch, mask_valid_batch))
+
+
 
 					#output_valid_batch = handle_haploid_output(output_valid_batch_1, output_valid_batch_2)
 
@@ -1101,9 +1091,23 @@ if __name__ == "__main__":
 					conc_v_batch = calculate_concordance_from_mask(output_valid_batch_1, output_valid_batch_2, targets_valid_batch, mask_valid_batch)
 					conc_v_batches.append(conc_v_batch)
 
+					if baseline_conc == None:
+						true_valid_genotype_batch = tf.convert_to_tensor(targets_valid_batch)
+						mask_indices = tf.equal(True, 0 == mask_valid_batch)
+						# try:
+						baseline_conc_batch =  get_baseline_gc(true_valid_genotype_batch[mask_indices])
+
+						# except:
+						# 	baseline_conc_batch = None
+						baseline_conc_batches.append(baseline_conc_batch)
+
 				losses_v_i_this_epoch = [np.average(x) for x in losses_v_i_batch]
 				valid_loss_this_epoch = np.average(losses_v_batches)
 				conc_v_this_epoch = np.average(conc_v_batches)
+				if baseline_conc == None:
+					baseline_conc = np.average(baseline_conc_batches)
+	
+					
 				with valid_writer.as_default():
 					tf.summary.scalar('loss', valid_loss_this_epoch, step=step_counter)
 
@@ -1196,10 +1200,13 @@ if __name__ == "__main__":
 		epochs_combined, genotype_concs_combined = write_metric_per_epoch_to_csv(outfilename, conc_v, train_epochs)
 
 		plt.plot(epochs_combined, genotype_concs_combined, label="train", c="green")
+		
+		if baseline_conc:
+			plt.plot([epochs_combined[0], epochs_combined[-1]], [baseline_conc, baseline_conc], label="baseline", c="black")
 
 		plt.xlabel("Epoch")
-		plt.ylabel("Genotype concordance in masked values vallidation")
-
+		plt.ylabel("Genotype concordance in masked values validation")
+		plt.legend()
 		plt.savefig("{0}/masked_validation_concordances.pdf".format(train_directory))
 
 		plt.close()
@@ -1242,6 +1249,10 @@ if __name__ == "__main__":
 		# genotype concordance of the train set per epoch
 		genotype_concs_train = []
 
+		# genotype cocordance between iterations in each epoch
+		concs_iter_0_2 = []
+		concs_iter_0_1 = []
+
 		# train losses in each iteration
 		losses_train_i = []
 		iterative = False
@@ -1250,6 +1261,8 @@ if __name__ == "__main__":
 		optimizer = tf.optimizers.Adam(learning_rate = learning_rate)
 
 		genotype_concordance_metric = GenotypeConcordance()
+		concordance_metric_0_2 = GenotypeConcordance()
+		concordance_metric_0_1 = GenotypeConcordance()
 
 		scatter_points_per_epoch = []
 		colors_per_epoch = []
@@ -1282,6 +1295,9 @@ if __name__ == "__main__":
 				#decoded_train = None
 				decoded_train_1 = None
 				decoded_train_2 = None
+				hap_1_i0 = None
+				hap_1_i1 = None
+				hap_1_i2 = None
 				targets_train = np.empty((0, n_markers))
 
 				loss_value_per_train_batch = []
@@ -1320,6 +1336,15 @@ if __name__ == "__main__":
 						decoded_train_batch_1, encoded_train_batch = autoencoder(input_train_batch_1, is_training = False)
 						decoded_train_batch_2, encoded_train_batch = autoencoder(input_train_batch_2, is_training = False)
 
+						# Calculate conocordance between haploid 1 in iteration 0  and 2
+						if i == 0:
+							hap_1_i0_batch = input_train_batch_1
+						elif i == 1:
+							hap_1_i1_batch = input_train_batch_1
+						elif i == 2:
+							hap_1_i2_batch = input_train_batch_1
+
+
 						# Make input haploids for next iteration
 						input_train_batch_2 = make_input_hap(decoded_train_batch_1, input_train_batch)
 						input_train_batch_1 = make_input_hap(decoded_train_batch_2, input_train_batch)
@@ -1328,6 +1353,7 @@ if __name__ == "__main__":
 						loss_train_batch_i = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
 						loss_train_batch_i += sum(autoencoder.losses)
 						losses_train_i_batch[i].append(loss_train_batch_i)
+
 					#"""
 
 					loss_train_batch = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
@@ -1344,10 +1370,16 @@ if __name__ == "__main__":
 						#decoded_train = np.copy(decoded_train_batch[:,0:n_markers])
 						decoded_train_1 = np.copy(decoded_train_batch_1[:,0:n_markers])
 						decoded_train_2= np.copy(decoded_train_batch_2[:,0:n_markers])
+						hap_1_i0 = np.copy(hap_1_i0_batch[:,0:n_markers])
+						hap_1_i1 = np.copy(hap_1_i1_batch[:,0:n_markers])
+						hap_1_i2 = np.copy(hap_1_i2_batch[:,0:n_markers])
 					else:
 						#decoded_train = np.concatenate((decoded_train, decoded_train_batch[:,0:n_markers]), axis=0)
 						decoded_train_1 = np.concatenate((decoded_train_1, decoded_train_batch_1[:,0:n_markers]), axis=0)
 						decoded_train_2 = np.concatenate((decoded_train_2, decoded_train_batch_2[:,0:n_markers]), axis=0)
+						hap_1_i0 = np.concatenate((hap_1_i0, hap_1_i0_batch[:,0:n_markers]), axis=0)
+						hap_1_i1 = np.concatenate((hap_1_i1, hap_1_i1_batch[:,0:n_markers]), axis=0)
+						hap_1_i2 = np.concatenate((hap_1_i2, hap_1_i2_batch[:,0:n_markers]), axis=0)
 						
 					targets_train = np.concatenate((targets_train, targets_train_batch[:,0:n_markers]), axis=0)
 
@@ -1381,6 +1413,8 @@ if __name__ == "__main__":
 				loss_value += sum(autoencoder.losses)
 
 			genotype_concordance_metric.reset_states()
+			concordance_metric_0_1.reset_states()
+			concordance_metric_0_2.reset_states()
 
 			if not fill_missing:
 				orig_nonmissing_mask = get_originally_nonmissing_mask(targets_train)
@@ -1409,7 +1443,16 @@ if __name__ == "__main__":
 			elif train_opts["loss"]["class"] in ["CategoricalCrossentropy", "KLDivergence"] and data_opts["norm_mode"] == "genotypewise01":
 				genotypes_output = tf.cast(tf.argmax(alfreqvector(decoded_train_1[:, 0:n_markers], decoded_train_2[:, 0:n_markers]), axis = -1), tf.float16) * 0.5
 				true_genotypes = targets_train
+				print('concordnace callculation')
+				print('genotypes_output')
+				print(genotypes_output)
+				print('orig_nonmissing_mask')
+				print(orig_nonmissing_mask)
+				print('genotypes_output[orig_nonmissing_mask]')
+				print(genotypes_output[orig_nonmissing_mask])
 				genotype_concordance_metric.update_state(y_pred = genotypes_output[orig_nonmissing_mask], y_true = true_genotypes[orig_nonmissing_mask])
+				concordance_metric_0_2.update_state(y_pred = hap_1_i0[orig_nonmissing_mask], y_true = hap_1_i2[orig_nonmissing_mask])
+				concordance_metric_0_1.update_state(y_pred = hap_1_i0[orig_nonmissing_mask], y_true = hap_1_i1[orig_nonmissing_mask])
 
 			else:
 				print("Could not calculate predicted genotypes and genotype concordance. Not implemented for loss {0} and normalization {1}.".format(train_opts["loss"]["class"],
@@ -1418,11 +1461,16 @@ if __name__ == "__main__":
 				true_genotypes = np.array([])
 
 			genotype_concordance_value = genotype_concordance_metric.result()
+			concordance_value_0_2 = concordance_metric_0_2.result()
+			concordance_value_0_1 = concordance_metric_0_1.result()
+
 
 			losses_train.append(loss_value)
 			if iterative:
 				losses_train_i.append(losses_i_this_epoch)
 			genotype_concs_train.append(genotype_concordance_value)
+			concs_iter_0_2.append(concordance_value_0_2)
+			concs_iter_0_1.append(concordance_value_0_1)
 			#"""
 			if superpopulations_file:
 				coords_by_pop = get_coords_by_pop(data_prefix, encoded_train, ind_pop_list = ind_pop_list_train)
@@ -1525,6 +1573,25 @@ if __name__ == "__main__":
 		plt.savefig(results_directory + "/" + "genotype_concordances.pdf")
 
 		plt.close()
+
+		############################### conc between iterations ###############################
+
+		outfilename = "{0}/concordances_between_iterations_02.csv".format(results_directory)
+		epochs_combined, concs_combined_0_2 = write_metric_per_epoch_to_csv(outfilename, concs_iter_0_2, epochs)
+
+		outfilename = "{0}/concordances_between_iterations_01.csv".format(results_directory)
+		epochs_combined, concs_combined_0_1 = write_metric_per_epoch_to_csv(outfilename, concs_iter_0_1, epochs)
+
+		plt.plot(epochs_combined, concs_combined_0_2, label="Iteration 0 and 2", c="orange")
+		plt.plot(epochs_combined, concs_combined_0_1, label="Iteration 0 and 1", c="darkmagenta")
+
+		plt.xlabel("Epoch")
+		plt.ylabel("Concordance between haploids")
+		plt.legend()
+		plt.savefig(results_directory + "/" + "concordances_between_iterations.pdf")
+
+		plt.close()
+
 
 	if arguments['animate']:
 
