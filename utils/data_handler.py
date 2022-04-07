@@ -268,48 +268,115 @@ class data_generator_ae:
 
 		return self.train_set_indices[idx]
 
-	def get_train_batch(self, sparsify, n_samples_batch):
+	def get_train_batch(self, sparsify, n_samples_batch, iterations):
 		'''
 		Get n_samples_batch train samples, with genotypes randomly set to missing with probability sparsify.
 		Fetch n_samples sequentially starting at index self.train_batch_location, looping over the current train set
-
 		If validation set has been defined, return train samples exluding the validation samples.
-
 		:param sparsify:
 		:param n_samples_batch: number of samples in batch
 		:return: input_data_train_batch (n_samples x n_markers x 2): sparsified  genotypes with mask specifying missing values of trai batch.
 																			   originally missing + removed by sparsify are indicated by value 0
 				 target_data_train_batch (n_samples x n_markers): original genotypes of this train batch
 				 ind_pop_list_train_batch (n_samples x 2) : individual and population IDs of train batch samples
-
 		'''
-		input_data_train = np.full((n_samples_batch, self.genotypes_train_orig.shape[1], 2), 1.0, dtype=np.dtype('f4'))
 
 		indices_this_batch = self._get_indices_looped(n_samples_batch)
-		genotypes_train = np.copy(self.genotypes_train_orig[self.sample_idx_train[indices_this_batch]])
+		
+		
+		input_data_res = []
+		targets_res = []
+		for i in range(iterations):
+			input_data_train = np.full((n_samples_batch, self.genotypes_train_orig.shape[1], 2), 1.0, dtype=np.dtype('f4'))
+			mask_train = np.full(input_data_train[:,:,0].shape, 1)
+			genotypes_train = np.copy(self.genotypes_train_orig[self.sample_idx_train[indices_this_batch]])
 
-		mask_train = np.full(input_data_train[:,:,0].shape, 1)
+			if not self.impute_missing:
+				# set the ones that are originally missing to 0 in mask (sinc we havent imputed them with RR)
+				mask_train[np.where(genotypes_train == self.missing_val)] = 0
 
-		if not self.impute_missing:
-			# set the ones that are originally missing to 0 in mask (sinc we havent imputed them with RR)
-			mask_train[np.where(genotypes_train == self.missing_val)] = 0
+			if sparsify > 0.0:
 
-		if sparsify > 0.0:
+				self._sparsify(mask_train, 1.0 - sparsify)
 
-			self._sparsify(mask_train, 1.0 - sparsify)
+				# indices of originally missing data + artifically sparsified data
+				missing_idx_train = np.where(mask_train == 0)
 
-			# indices of originally missing data + artifically sparsified data
-			missing_idx_train = np.where(mask_train == 0)
+				# fill genotypes with original valid genotypes and sparsify according to binary_mask_train
+				genotypes_train[missing_idx_train] = self.missing_val
 
-			# fill genotypes with original valid genotypes and sparsify according to binary_mask_train
-			genotypes_train[missing_idx_train] = self.missing_val
+			input_data_train[:,:,0] = genotypes_train
+			input_data_train[:,:,1] = mask_train
 
-		input_data_train[:,:,0] = genotypes_train
-		input_data_train[:,:,1] = mask_train
+			targets = self.genotypes_train_orig[self.sample_idx_train[indices_this_batch]]
 
-		targets = self.genotypes_train_orig[self.sample_idx_train[indices_this_batch]]
+			input_data_res.append(input_data_train)
+			targets_res.append(targets)
 
-		return input_data_train, targets, self.ind_pop_list_train_orig[self.sample_idx_train[indices_this_batch]]
+		return input_data_res, targets_res, self.ind_pop_list_train_orig[self.sample_idx_train[indices_this_batch]]
+
+
+	# def get_train_batch(self, sparsify, n_samples_batch, iterations):
+	# 	'''
+	# 	Get n_samples_batch train samples, with genotypes randomly set to missing with probability sparsify.
+	# 	Fetch n_samples sequentially starting at index self.train_batch_location, looping over the current train set
+
+	# 	If validation set has been defined, return train samples exluding the validation samples.
+
+	# 	:param sparsify:
+	# 	:param n_samples_batch: number of samples in batch
+	# 	:return: input_data_train_batch (n_samples x n_markers x 2): sparsified  genotypes with mask specifying missing values of trai batch.
+	# 																		   originally missing + removed by sparsify are indicated by value 0
+	# 			 target_data_train_batch (n_samples x n_markers): original genotypes of this train batch
+	# 			 ind_pop_list_train_batch (n_samples x 2) : individual and population IDs of train batch samples
+
+	# 	'''
+	# 	input_data_train = np.full((n_samples_batch, self.genotypes_train_orig.shape[1], 2), 1.0, dtype=np.dtype('f4'))
+
+	# 	indices_this_batch = self._get_indices_looped(n_samples_batch)
+	# 	genotypes_train = np.copy(self.genotypes_train_orig[self.sample_idx_train[indices_this_batch]])
+
+	# 	mask_train = np.full(input_data_train[:,:,0].shape, 1)
+
+	# 	if not self.impute_missing:
+	# 		# set the ones that are originally missing to 0 in mask (sinc we havent imputed them with RR)
+	# 		mask_train[np.where(genotypes_train == self.missing_val)] = 0
+
+	# 	input_data_train_all = []
+	# 	targets_all =[]
+	# 	for i in range(iterations):
+	# 		if sparsify > 0.0:
+	# 			self._sparsify(mask_train, 1.0 - sparsify)
+
+	# 			# indices of originally missing data + artifically sparsified data
+	# 			missing_idx_train = np.where(mask_train == 0)
+
+	# 			# fill genotypes with original valid genotypes and sparsify according to binary_mask_train
+	# 			genotypes_train[missing_idx_train] = self.missing_val
+
+	# 		input_data_train[:,:,0] = genotypes_train
+	# 		input_data_train[:,:,1] = mask_train
+
+	# 		targets = self.genotypes_train_orig[self.sample_idx_train[indices_this_batch]]
+
+	# 		input_data_train_all.append(input_data_train)
+	# 		targets_all.append(targets)
+
+	# 	# 	if sparsify > 0.0:
+
+	# 	# 		self._sparsify(mask_train, 1.0 - sparsify)
+
+	# 	# 		# indices of originally missing data + artifically sparsified data
+	# 	# 		missing_idx_train = np.where(mask_train == 0)
+
+	# 	# 		# fill genotypes with original valid genotypes and sparsify according to binary_mask_train
+	# 	# 		genotypes_train[missing_idx_train] = self.missing_val
+
+	# 	# 	input_data_train[:,:,0] = genotypes_train
+	# 	# 	input_data_train[:,:,1] = mask_train
+
+	# 	return input_data_train, targets, self.ind_pop_list_train_orig[self.sample_idx_train[indices_this_batch]]
+
 
 
 	def get_train_set(self, sparsify):
