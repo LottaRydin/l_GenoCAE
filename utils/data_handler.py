@@ -283,7 +283,7 @@ class data_generator_ae:
 
 		indices_this_batch = self._get_indices_looped(n_samples_batch)
 		
-		
+		# New sparsification for every iteration
 		input_data_res = []
 		targets_res = []
 		for i in range(iterations):

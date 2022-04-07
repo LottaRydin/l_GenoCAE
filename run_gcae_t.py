@@ -527,14 +527,14 @@ def make_input_hap(hap_output, dip_input):
 	# ones_val_0_1 = tf.zeros((int(tf.shape(indices_0_1)[0])), dtype=tf.float32)
 	# ones_val_0_1 = tf.add(ones_val_0_1, 1)
 
-	# comp_hap = tf.tensor_scatter_nd_update(comp_hap, indices_0_1, ones_val_0_1)
+	# comp_hap = tf.tensor_scatter_nd_update(comp_hap, indices_0_1, ones_val_0_1) 
 
 
 	return comp_hap
 
 def make_input_haps(hap_output_1, hap_output_2, dip_input):
 	"""
-	creates two complementary haploid based on output haploid an input diploid.
+	creates two complementary haploid based on output haploid an input diploid. Where heterozygots are incorrect, they will be assigned new alleles.
 	"""
 
 	comp_hap_1 = make_input_hap(hap_output_2, dip_input)
