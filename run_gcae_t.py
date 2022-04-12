@@ -378,7 +378,7 @@ def run_optimization(model, optimizer, loss_function, input, targets, iterations
 		for i in range(iterations):
 			output_1, encoded_data = model(input_1, is_training=True)
 			output_2, encoded_data = model(input_2, is_training=True)
-			#output = handle_haploid_output(output_1, output_2)
+
 
 			loss_value += loss_function(y_pred_1 = output_1, y_pred_2 = output_2, y_true = targets[i])
 		#	loss_value = loss_function(y_pred_1 = output_1, y_pred_2 = output_2, y_true = targets[i])
@@ -386,14 +386,15 @@ def run_optimization(model, optimizer, loss_function, input, targets, iterations
 
 			# Make input haploids for next iteration
 			if i < iterations-1:
-				input_2 = make_input_hap(output_1, input[i+1])
-				input_1 = make_input_hap(output_2, input[i+1])
+				# input_2 = make_input_hap(output_1, input[i+1])
+				# input_1 = make_input_hap(output_2, input[i+1])
+				input_1, input_2 = make_input_haps(output_1, output_2, input[i+1])
+
 		# gradients = g.gradient(loss_value, model.trainable_variables)
 		# optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 	gradients = g.gradient(loss_value, model.trainable_variables)
 	optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-	# tf.print('original input:')
-	# tf.print(input)
+
 	return loss_value
 
 
@@ -530,38 +531,128 @@ def make_input_hap(hap_output, dip_input):
 	# comp_hap = tf.tensor_scatter_nd_update(comp_hap, indices_0_1, ones_val_0_1) 
 
 
-	return comp_hap
+	return comp_hap, alfreq
 
-def make_input_haps(hap_output_1, hap_output_2, dip_input):
+def make_input_haps(hap_output_1, hap_output_2, dip_input): #  method = 'random' maybe as input parameter
 	"""
 	creates two complementary haploid based on output haploid an input diploid. Where heterozygots are incorrect, they will be assigned new alleles.
 	"""
+	method = 'random'
+	#method = 'alfreq'
+	
+	comp_hap_1, alfreq_1 = make_input_hap(hap_output_2, dip_input)
+	comp_hap_2, alfreq_2 = make_input_hap(hap_output_1, dip_input)
 
-	comp_hap_1 = make_input_hap(hap_output_2, dip_input)
-	comp_hap_2 = make_input_hap(hap_output_1, dip_input)
+	if method == 'random':
 
-	# Extract hetrozygot positions:
-	hetero_indices = tf.equal(True, 0.5 == dip_input[:,:,0])
+		# Extract hetrozygot positions:
+		hetero_indices = tf.equal(True, 0.5 == dip_input[:,:,0])
 
-	# Extract where there is difference:
-	not_equals_bool = tf.not_equal(comp_hap_1[:,:,0], comp_hap_2[:,:,0])
+		# Extract where there is not a difference:
+		equals_bool = tf.equal(comp_hap_1[:,:,0], comp_hap_2[:,:,0])
 
-	# Combine to find where to apply changes
-	indices_wrong_hetero = tf.where(tf.math.logical_and(hetero_indices, not_equals_bool), True, False)
+		# Combine to find where to apply changes
+		indices_wrong_hetero = tf.where(tf.math.logical_and(hetero_indices, equals_bool)) #, True, False)
+		zero_index = tf.zeros((int(tf.shape(indices_wrong_hetero)[0]), 1), dtype=tf.int64)
+		indices_wrong_hetero = tf.concat([indices_wrong_hetero, zero_index], -1)
 
-	# Make new random alleles
-	random_allele_1 = tf.random.uniform(shape = [int(tf.shape(indices_wrong_hetero)[0])], minval = 0, maxval = 2, dtype=tf.int64)
-	random_allele_1 = tf.cast(random_allele_1, dtype=tf.float32)
-	random_allele_2 = tf.math.subtract(1., random_allele_1)
+		# Make new random alleles
+		random_allele_1 = tf.random.uniform(shape = [int(tf.shape(indices_wrong_hetero)[0])], minval = 0, maxval = 2, dtype=tf.int64)
+		random_allele_1 = tf.cast(random_allele_1, dtype=tf.float32)
+		random_allele_2 = tf.math.subtract(1., random_allele_1)
 
-	# Update haploids
-	haploid_1 = tf.tensor_scatter_nd_update(comp_hap_1[:,:,0], indices, random_allele_1)
-	haploid_2 = tf.tensor_scatter_nd_update(comp_hap_2[:,:,0], indices, random_allele_2)
+		# Update haploids
+		# print('dip_input')
+		# print(dip_input)
+		# print('comp_hap_1')
+		# print(comp_hap_1)
+		# print(comp_hap_1.shape)
+		# print('comp_hap_2')
+		# print(comp_hap_2)
+		# print(comp_hap_2.shape)
+		# print('indices_wrong_hetero')
+		# print(indices_wrong_hetero)
+		# print(indices_wrong_hetero.shape)
+		# print(tf.shape(indices_wrong_hetero))
+		#print(int(tf.shape(indices_wrong_hetero)[0])>0)
+		#print(int(indices_wrong_hetero.shape[0])>0)
+		if indices_wrong_hetero.shape[0]!=None:
+			#print('JAAAAA')
+			#comp_hap_1 = tf.tensor_scatter_nd_update(comp_hap_1[:,:,0], indices_wrong_hetero, random_allele_1)
+			comp_hap_1 = tf.tensor_scatter_nd_update(comp_hap_1, indices_wrong_hetero, random_allele_1)
+			comp_hap_2 = tf.tensor_scatter_nd_update(comp_hap_2, indices_wrong_hetero, random_allele_2)
+		# else:
+		# 	print('NEEEEEEEEEEEEJ')
 
-	return haploid_1, haploid_2
+	elif method == 'alfreq':
+		# print('dip_input')
+		# print(dip_input)
+		# print('alfreq_1')
+		# print(alfreq_1)
+		# print(alfreq_1.shape)
+		# print('alfreq_2')
+		# print(alfreq_2)
+		# print(alfreq_2.shape)
+
+		#### use alfreq values to decide what alleles to assign ####
+
+		# Extract hetrozygot positions:
+		hetero_indices = tf.equal(True, 0.5 == dip_input)
+
+		# Extract where there is not a difference:
+		equals_bool = tf.equal(comp_hap_1, comp_hap_2)
+
+		# Find where alfreq_1 is larger and smaller than alfreq_2:
+		larger_alfreq_1 = tf.math.greater_equal(alfreq_1, alfreq_2)
+		zero_index = tf.zeros(tf.shape(larger_alfreq_1), dtype=tf.bool)
+		larger_alfreq_1 = tf.concat([larger_alfreq_1, zero_index], -1)
+
+		smaller_alfreq_1 = tf.math.less(alfreq_1, alfreq_2)
+		smaller_alfreq_1 = tf.concat([smaller_alfreq_1, zero_index], -1)
+
+		# Combine where there is not a difference, heterozygot position and larger value in alfreq_1
+		final_larger_alfreq_1 = tf.where(tf.math.logical_and(hetero_indices, equals_bool), True, False)
+		final_larger_alfreq_1 = tf.where(tf.math.logical_and(final_larger_alfreq_1, larger_alfreq_1), True, False)
+
+		# Combine where there is not a difference, heterozygot position and smaller value in alfreq_1
+		final_smaller_alfreq_1 = tf.where(tf.math.logical_and(hetero_indices, equals_bool), True, False)
+		final_smaller_alfreq_1 = tf.where(tf.math.logical_and(final_smaller_alfreq_1, smaller_alfreq_1), True, False)
+
+	
+		# print('tf.where(tf.math.logical_and(hetero_indices, equals_bool), True, False)')
+		# print(tf.where(tf.math.logical_and(hetero_indices, equals_bool), True, False))
+		# print('final_larger_alfreq_1')
+		# print(final_larger_alfreq_1)
+		# print('final_smaller_alfreq_1')
+		# print(final_smaller_alfreq_1)
+
+		#print(int(tf.shape(indices_wrong_hetero)[0])>0)
+		#print(int(indices_wrong_hetero.shape[0])>0)
+
+		# Apply changes
+		comp_hap_1 = tf.where(final_larger_alfreq_1, 1., comp_hap_1)
+		comp_hap_1 = tf.where(final_smaller_alfreq_1, 0., comp_hap_1)
+
+		comp_hap_2 = tf.where(final_larger_alfreq_1, 0., comp_hap_2)
+		comp_hap_2 = tf.where(final_smaller_alfreq_1, 1., comp_hap_2)
 
 
+	
+	# print('random_allele_1')
+	# print(random_allele_1)
 
+	#haploid_1 = tf.tensor_scatter_nd_update()
+
+	
+
+	# print('haploid_1')
+	# print(comp_hap_1)
+	# print(comp_hap_1.shape)
+	# print('haploid_2')
+	# print(comp_hap_2)
+	# print(comp_hap_2.shape)
+	return comp_hap_1, comp_hap_2
+	#return haploid_1, haploid_2
 
 	
 
@@ -1100,6 +1191,7 @@ if __name__ == "__main__":
 		losses_v_i = []
 		# Concordance in validation sparsifying mask per epoch
 		conc_v = []
+		conc_v_i0 = []
 		conc_v_i = []
 		baseline_conc = None
 
@@ -1116,6 +1208,7 @@ if __name__ == "__main__":
 			losses_t_batches = []
 			losses_v_batches = []
 			conc_v_batches = []
+			conc_v_i0_batches = []
 			baseline_conc_batches = []
 
 			for ii in range(n_train_batches):
@@ -1177,7 +1270,7 @@ if __name__ == "__main__":
 				startTime = datetime.now()
 
 				for jj in range(n_valid_batches):
-					print(f'valid batch: {jj}')
+					#print(f'valid batch: {jj}')
 					start = jj*batch_size_valid
 					if jj == n_valid_batches - 1:
 						input_valid_batch = input_valid[start:]
@@ -1200,21 +1293,28 @@ if __name__ == "__main__":
 					iterations_v = [x+1 for x in range(iterations)]
 
 					for i in range(iterations):
-						print('iteration ', i)
+						#print('iteration ', i)
 
 						output_valid_batch_1, encoded_data_valid_batch = autoencoder(input_train_batch_1, is_training = False)
 						output_valid_batch_2, encoded_data_valid_batch = autoencoder(input_train_batch_2, is_training = False)
 
-						# Find first 5 different values for hap 1
-						print('Find first 5 different values for hap 1')
-						first_n_hetero(5, input_train_batch_1, output_valid_batch_1, input_valid_batch, mask_valid_batch, unmasked = True)
-						# Find first 5 different values for hap 1
-						print('Find first 5 different values for hap 2')
-						first_n_hetero(5, input_train_batch_2, output_valid_batch_2, input_valid_batch, mask_valid_batch, unmasked = True)
+						# Save first iteration for plotting:
+						if i == 0:
+							output_1_i0 = output_valid_batch_1
+							output_2_i0 = output_valid_batch_2
+
+
+						# # Find first 5 different values for hap 1
+						# print('Find first 5 different values for hap 1')
+						# first_n_hetero(5, input_train_batch_1, output_valid_batch_1, input_valid_batch, mask_valid_batch, unmasked = True)
+						# # Find first 5 different values for hap 1
+						# print('Find first 5 different values for hap 2')
+						# first_n_hetero(5, input_train_batch_2, output_valid_batch_2, input_valid_batch, mask_valid_batch, unmasked = True)
 
 						# Input for next iteration
-						input_train_batch_1 = make_input_hap(output_valid_batch_2, input_valid_batch)
-						input_train_batch_2 = make_input_hap(output_valid_batch_1, input_valid_batch)
+						# input_train_batch_1 = make_input_hap(output_valid_batch_2, input_valid_batch)
+						# input_train_batch_2 = make_input_hap(output_valid_batch_1, input_valid_batch)
+						input_train_batch_1, input_train_batch_2 = make_input_haps(output_valid_batch_1, output_valid_batch_2, input_valid_batch)
 
 						# Loss calculated in each iteration
 						valid_loss_batch_i = loss_func(y_pred_1 = output_valid_batch_1, y_pred_2 = output_valid_batch_2, y_true = targets_valid_batch)
@@ -1236,6 +1336,9 @@ if __name__ == "__main__":
 					conc_v_batch = calculate_concordance_from_mask(output_valid_batch_1, output_valid_batch_2, targets_valid_batch, mask_valid_batch)
 					conc_v_batches.append(conc_v_batch)
 
+					conc_v_i0_batch = calculate_concordance_from_mask(output_1_i0, output_2_i0, targets_valid_batch, mask_valid_batch)
+					conc_v_i0_batches.append(conc_v_i0_batch)
+
 					if baseline_conc == None:
 						true_valid_genotype_batch = tf.convert_to_tensor(targets_valid_batch)
 						mask_indices = tf.equal(True, 0 == mask_valid_batch)
@@ -1250,6 +1353,7 @@ if __name__ == "__main__":
 				conc_v_i_this_epoch = [np.average(x) for x in conc_v_i_batch]
 				valid_loss_this_epoch = np.average(losses_v_batches)
 				conc_v_this_epoch = np.average(conc_v_batches)
+				conc_v_i0_this_epoch = np.average(conc_v_i0_batches)
 				if baseline_conc == None:
 					baseline_conc = np.average(baseline_conc_batches)
 	
@@ -1260,6 +1364,7 @@ if __name__ == "__main__":
 				losses_v.append(valid_loss_this_epoch)
 				losses_v_i.append(losses_v_i_this_epoch)
 				conc_v.append(conc_v_this_epoch)
+				conc_v_i0.append(conc_v_i0_this_epoch)
 				conc_v_i.append(conc_v_i_this_epoch)
 				valid_time = (datetime.now() - startTime).total_seconds()
 
@@ -1381,7 +1486,11 @@ if __name__ == "__main__":
 		outfilename = "{0}/masked_validation_concordances.csv".format(train_directory)
 		epochs_combined, genotype_concs_combined = write_metric_per_epoch_to_csv(outfilename, conc_v, train_epochs)
 
-		plt.plot(epochs_combined, genotype_concs_combined, label="train", c="green")
+		outfilename = "{0}/masked_validation_concordances_i0.csv".format(train_directory)
+		epochs_combined_i0, genotype_concs_combined_i0 = write_metric_per_epoch_to_csv(outfilename, conc_v_i0, train_epochs)
+
+		plt.plot(epochs_combined, genotype_concs_combined, label="train, last iteration", c="green")
+		plt.plot(epochs_combined_i0, genotype_concs_combined_i0, label="train, first iteration", c="blue")
 		
 		if baseline_conc:
 			plt.plot([epochs_combined[0], epochs_combined[-1]], [baseline_conc, baseline_conc], label="baseline", c="black")
@@ -1533,8 +1642,9 @@ if __name__ == "__main__":
 
 
 						# Make input haploids for next iteration
-						input_train_batch_2 = make_input_hap(decoded_train_batch_1, input_train_batch)
-						input_train_batch_1 = make_input_hap(decoded_train_batch_2, input_train_batch)
+						# input_train_batch_2 = make_input_hap(decoded_train_batch_1, input_train_batch)
+						# input_train_batch_1 = make_input_hap(decoded_train_batch_2, input_train_batch)
+						input_train_batch_1, input_train_batch_2 = make_input_haps(decoded_train_batch_1, decoded_train_batch_2, input_train_batch)
 
 						# Save losses:
 						loss_train_batch_i = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
