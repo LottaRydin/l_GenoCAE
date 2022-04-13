@@ -204,15 +204,15 @@ class Autoencoder(Model):
 
 		# do all layers except first
 		for layer_def in self.all_layers[1:]:
-			# print(f'layer def: {type(layer_def)}')
+		#	print(f'layer def: {type(layer_def)}')
 			# print(str(layer_def))	
 			# print('-------X--------')
-			# print(x)
+		#	print(x)
 			try:
 				layer_name = layer_def.cname
 			except:
 				layer_name = layer_def.name
-			#print(layer_name)
+		#	print(layer_name)
 			#print("layer {0}: {1} ({2}) . input x: {3}".format(counter, layer_name, type(layer_def), x.shape, ))
 			#print(x)
 
@@ -376,6 +376,7 @@ def run_optimization(model, optimizer, loss_function, input, targets, iterations
 	loss_value = tf.constant(0.0)
 	with tf.GradientTape() as g:
 		for i in range(iterations):
+			#print('iteration ', i)
 			output_1, encoded_data = model(input_1, is_training=True)
 			output_2, encoded_data = model(input_2, is_training=True)
 
@@ -1187,6 +1188,7 @@ if __name__ == "__main__":
 		losses_t = []
 		# valid losses per epoch
 		losses_v = []
+		losses_v_i0 = []
 		# valid losses in each iteration
 		losses_v_i = []
 		# Concordance in validation sparsifying mask per epoch
@@ -1207,6 +1209,7 @@ if __name__ == "__main__":
 			effective_epoch = e + resume_from
 			losses_t_batches = []
 			losses_v_batches = []
+			losses_v_i0_batches = []
 			conc_v_batches = []
 			conc_v_i0_batches = []
 			baseline_conc_batches = []
@@ -1332,6 +1335,10 @@ if __name__ == "__main__":
 					valid_loss_batch += sum(autoencoder.losses)
 					losses_v_batches.append(valid_loss_batch)
 
+					valid_loss_batch_i0 = loss_func(y_pred_1 = output_1_i0, y_pred_2 = output_2_i0, y_true = targets_valid_batch)
+					valid_loss_batch_i0 += sum(autoencoder.losses)
+					losses_v_i0_batches.append(valid_loss_batch_i0)
+
 					# Calculate concordance for each batch
 					conc_v_batch = calculate_concordance_from_mask(output_valid_batch_1, output_valid_batch_2, targets_valid_batch, mask_valid_batch)
 					conc_v_batches.append(conc_v_batch)
@@ -1352,6 +1359,7 @@ if __name__ == "__main__":
 				losses_v_i_this_epoch = [np.average(x) for x in losses_v_i_batch]
 				conc_v_i_this_epoch = [np.average(x) for x in conc_v_i_batch]
 				valid_loss_this_epoch = np.average(losses_v_batches)
+				valid_loss_this_epoch_i0 = np.average(losses_v_i0_batches)
 				conc_v_this_epoch = np.average(conc_v_batches)
 				conc_v_i0_this_epoch = np.average(conc_v_i0_batches)
 				if baseline_conc == None:
@@ -1362,6 +1370,7 @@ if __name__ == "__main__":
 					tf.summary.scalar('loss', valid_loss_this_epoch, step=step_counter)
 
 				losses_v.append(valid_loss_this_epoch)
+				losses_v_i0.append(valid_loss_this_epoch_i0)
 				losses_v_i.append(losses_v_i_this_epoch)
 				conc_v.append(conc_v_this_epoch)
 				conc_v_i0.append(conc_v_i0_this_epoch)
@@ -1397,13 +1406,44 @@ if __name__ == "__main__":
 
 		outfilename = "{0}/losses_from_train_t.csv".format(train_directory)
 		epochs_t_combined, losses_t_combined = write_metric_per_epoch_to_csv(outfilename, losses_t, train_epochs)
+
+		# plot without train loss
 		fig, ax = plt.subplots()
-		plt.plot(epochs_t_combined, losses_t_combined, label="train", c="orange")
 
 		if n_valid_samples > 0:
 			outfilename = "{0}/losses_from_train_v.csv".format(train_directory)
 			epochs_v_combined, losses_v_combined = write_metric_per_epoch_to_csv(outfilename, losses_v, train_epochs)
-			plt.plot(epochs_v_combined, losses_v_combined, label="valid", c="blue")
+			plt.plot(epochs_v_combined, losses_v_combined, label="valid, last iteration", c="green")
+
+			outfilename_i0 = "{0}/losses_from_train_v_i0.csv".format(train_directory)
+			epochs_v_combined_i0, losses_v_combined_i0 = write_metric_per_epoch_to_csv(outfilename_i0, losses_v_i0, train_epochs)
+			plt.plot(epochs_v_combined_i0, losses_v_combined_i0, label="valid, first iteration", c="blue")
+
+			min_valid_loss_epoch = epochs_v_combined[np.argmin(losses_v_combined)]
+			plt.axvline(min_valid_loss_epoch, color="black")
+			plt.text(min_valid_loss_epoch + 0.1, 0.5,'min valid loss at epoch {}'.format(int(min_valid_loss_epoch)),
+					 rotation=90,
+					 transform=ax.get_xaxis_text1_transform(0)[0])
+
+		plt.xlabel("Epoch")
+		plt.ylabel("Loss function value")
+		plt.legend()
+		plt.savefig("{}/losses_from_train_no_trainloss.pdf".format(train_directory))
+		plt.close()
+
+		# plot with train loss
+		fig, ax = plt.subplots()
+		plt.plot(epochs_t_combined, losses_t_combined, label="train", c="orange")
+
+		if n_valid_samples > 0:
+			#outfilename = "{0}/losses_from_train_v.csv".format(train_directory)
+			#epochs_v_combined, losses_v_combined = write_metric_per_epoch_to_csv(outfilename, losses_v, train_epochs)
+			plt.plot(epochs_v_combined, losses_v_combined, label="validation, last iteration", c="green")
+
+			#outfilename_i0 = "{0}/losses_from_train_v_i0.csv".format(train_directory)
+			#epochs_v_combined_i0, losses_v_combined_i0 = write_metric_per_epoch_to_csv(outfilename_i0, losses_v_i0, train_epochs)
+			plt.plot(epochs_v_combined_i0, losses_v_combined_i0, label="validation, first iteration", c="blue")
+
 			min_valid_loss_epoch = epochs_v_combined[np.argmin(losses_v_combined)]
 			plt.axvline(min_valid_loss_epoch, color="black")
 			plt.text(min_valid_loss_epoch + 0.1, 0.5,'min valid loss at epoch {}'.format(int(min_valid_loss_epoch)),
@@ -1415,6 +1455,8 @@ if __name__ == "__main__":
 		plt.legend()
 		plt.savefig("{}/losses_from_train.pdf".format(train_directory))
 		plt.close()
+
+		
 
 		########################################### Make plots for iteration #########################################
 		### Plotting loss in each iteration and epoch ###
@@ -1536,6 +1578,8 @@ if __name__ == "__main__":
 
 		# loss function of the train set per epoch
 		losses_train = []
+		losses_train_i0 = []
+
 
 		# genotype concordance of the train set per epoch
 		genotype_concs_train = []
@@ -1594,6 +1638,7 @@ if __name__ == "__main__":
 				targets_train = np.empty((0, n_markers))
 
 				loss_value_per_train_batch = []
+				loss_value_per_train_batch_i0 = []
 				genotype_conc_per_train_batch = []
 
 				for b in range(n_train_batches):
@@ -1635,6 +1680,8 @@ if __name__ == "__main__":
 						# Calculate conocordance between haploid 1 in iteration 0  and 2
 						if i == 0:
 							hap_1_i0_batch = input_train_batch_1
+							decoded_train_1_i0 = decoded_train_batch_1
+							decoded_train_2_i0 = decoded_train_batch_2
 						elif i == 1:
 							hap_1_i1_batch = input_train_batch_1
 						elif i == 2:
@@ -1655,6 +1702,9 @@ if __name__ == "__main__":
 
 					loss_train_batch = loss_func(y_pred_1 = decoded_train_batch_1, y_pred_2 = decoded_train_batch_2, y_true = targets_train_batch)
 					loss_train_batch += sum(autoencoder.losses)
+
+					loss_train_batch_i0 = loss_func(y_pred_1 = decoded_train_1_i0, y_pred_2 = decoded_train_2_i0, y_true = targets_train_batch)
+					loss_train_batch_i0 += sum(autoencoder.losses)
 
 					# decoded_train_batch, encoded_train_batch = autoencoder(input_train_batch, is_training = False)
 					# loss_train_batch = loss_func(y_pred = decoded_train_batch, y_true = targets_train_batch)
@@ -1681,12 +1731,16 @@ if __name__ == "__main__":
 					targets_train = np.concatenate((targets_train, targets_train_batch[:,0:n_markers]), axis=0)
 
 					loss_value_per_train_batch.append(loss_train_batch)
+					loss_value_per_train_batch_i0.append(loss_train_batch_i0)
+
 				
 
 				ind_pop_list_train = np.array(ind_pop_list_train)
 				encoded_train = np.array(encoded_train)
 
 				loss_value = np.average(loss_value_per_train_batch)
+				loss_value_i0 = np.average(loss_value_per_train_batch_i0)
+
 				if iterative:
 					losses_i_this_epoch = [np.average(x) for x in losses_train_i_batch]
 
@@ -1763,6 +1817,7 @@ if __name__ == "__main__":
 
 
 			losses_train.append(loss_value)
+			losses_train_i0.append(loss_value_i0)
 			if iterative:
 				losses_train_i.append(losses_i_this_epoch)
 			genotype_concs_train.append(genotype_concordance_value)
@@ -1804,10 +1859,16 @@ if __name__ == "__main__":
 		outfilename = "{0}/losses_from_project.csv".format(results_directory)
 		epochs_combined, losses_train_combined = write_metric_per_epoch_to_csv(outfilename, losses_train, epochs)
 
-
 		plt.plot(epochs_combined, losses_train_combined,
-				 label="all data",
+				 label="all data, last iteration",
 				 c="red")
+
+		outfilename_i0 = "{0}/losses_from_project_i0.csv".format(results_directory)
+		epochs_combined_i0, losses_train_combined_i0 = write_metric_per_epoch_to_csv(outfilename_i0, losses_train_i0, epochs)
+
+		plt.plot(epochs_combined_i0, losses_train_combined_i0,
+				 label="all data, first iteration",
+				 c="orange")
 
 		plt.xlabel("Epoch")
 		plt.ylabel("Loss function value")
