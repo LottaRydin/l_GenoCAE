@@ -79,6 +79,16 @@ class Autoencoder(Model):
 		first_layer_def = model_architecture["layers"][0]
 		layer_module = getattr(eval(first_layer_def["module"]), first_layer_def["class"])
 		layer_args = first_layer_def["args"]
+
+		# Add row 100-106 here
+		if "kernel_initializer" in layer_args and layer_args["kernel_initializer"] == "flum":
+			if "kernel_size" in layer_args:
+				dim = layer_args["kernel_size"] * layer_args["filters"]
+			else:
+				dim = layer_args["units"]
+			limit = math.sqrt(2 * 3 / (dim))
+			layer_args["kernel_initializer"] = tf.keras.initializers.RandomUniform(-limit, limit)			
+
 		try:
 			activation = getattr(tf.nn, layer_args["activation"])
 			layer_args.pop("activation")
@@ -103,6 +113,15 @@ class Autoencoder(Model):
 
 				if arg in layer_args.keys():
 					layer_args[arg] = eval(str(layer_args[arg]))
+			
+			# Probably add row 100-106 here. snarare 134-140.
+			if "kernel_initializer" in layer_args and layer_args["kernel_initializer"] == "flum":
+				if "kernel_size" in layer_args:
+					dim = layer_args["kernel_size"] * layer_args["filters"]
+				else:
+					dim = layer_args["units"]
+				limit = math.sqrt(2 * 3 / (dim))
+				layer_args["kernel_initializer"] = tf.keras.initializers.RandomUniform(-limit, limit)
 
 			if layer_def["class"] == "MaxPool1D":
 				ns.append(int(math.ceil(float(ns[-1]) / layer_args["strides"])))
@@ -372,6 +391,7 @@ def run_optimization(model, optimizer, loss_function, input, targets, iterations
 	:param targets: target data
 	:return: value of the loss function
 	'''
+	#iterations = 1
 	input_1, input_2 = make_haploids(input[0])
 	loss_value = tf.constant(0.0)
 	with tf.GradientTape() as g:
@@ -1201,8 +1221,9 @@ if __name__ == "__main__":
 		min_valid_loss = np.inf
 		min_valid_loss_epoch = None
 		
-
+		autoencoder.summary()
 		for e in range(1,epochs+1):
+
 			print(f'epok{e}')
 			startTime = datetime.now()
 			dg.shuffle_train_samples()
@@ -1678,13 +1699,22 @@ if __name__ == "__main__":
 						decoded_train_batch_2, encoded_train_batch = autoencoder(input_train_batch_2, is_training = False)
 
 						# Calculate conocordance between haploid 1 in iteration 0  and 2
-						if i == 0:
+						if iterations > 1:
+							if i == 0:
+								hap_1_i0_batch = input_train_batch_1
+								decoded_train_1_i0 = decoded_train_batch_1
+								decoded_train_2_i0 = decoded_train_batch_2
+							elif i == 1:
+								hap_1_i1_batch = input_train_batch_1
+							elif i == 2:
+								hap_1_i2_batch = input_train_batch_1
+						else: 
 							hap_1_i0_batch = input_train_batch_1
 							decoded_train_1_i0 = decoded_train_batch_1
 							decoded_train_2_i0 = decoded_train_batch_2
-						elif i == 1:
+						
 							hap_1_i1_batch = input_train_batch_1
-						elif i == 2:
+						
 							hap_1_i2_batch = input_train_batch_1
 
 
